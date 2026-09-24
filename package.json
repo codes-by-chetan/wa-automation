@@ -10,8 +10,8 @@
     "test": "tsx src/test-services.ts"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Chetan Mohite",
+  "license": "MIT",
   "type": "commonjs",
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc14",
