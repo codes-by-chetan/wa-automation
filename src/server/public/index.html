@@ -483,6 +483,46 @@
             </div>
           </div>
         </div>
+
+        <!-- Emergency & Wake-Up Alert Protocol -->
+        <div class="card mt-4" style="border: 1px solid rgba(239, 68, 68, 0.35); background: linear-gradient(180deg, rgba(239, 68, 68, 0.05) 0%, rgba(20, 24, 39, 0.6) 100%);">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span style="font-size: 1.25rem;">🚨</span>
+              <h3 class="card-title" style="margin: 0; color: #ef4444;">Emergency & Wake-Up Protocol</h3>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-test-emergency" type="button" style="border-color: rgba(239, 68, 68, 0.4); color: #fca5a5;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+              </svg>
+              Test Emergency Alarm & SOS
+            </button>
+          </div>
+          <p class="card-subtitle">
+            When a contact says <em>"wake up"</em>, <em>"urgent"</em>, or asks the AI to notify/wake you up, the system plays a continuous loud phone ringtone on this PC and dispatches an instant WhatsApp SOS message to your designated emergency number.
+          </p>
+
+          <div class="grid-2col mt-3">
+            <div class="form-group">
+              <label for="input-emergency-number">Emergency Phone Number</label>
+              <input type="text" id="input-emergency-number" class="form-control" placeholder="+919764560354 (with country code)">
+              <span class="form-hint">The phone number that will be called and receive emergency alerts.</span>
+            </div>
+
+            <div class="form-group">
+              <label for="input-callmebot-key">CallMeBot API Key (For Phone Call)</label>
+              <input type="text" id="input-callmebot-key" class="form-control" placeholder="API Key received from Call Me Bot on WhatsApp">
+              <span class="form-hint">The API key sent to you by Call Me Bot on WhatsApp.</span>
+            </div>
+          </div>
+
+          <div class="form-group mt-2">
+            <label for="input-emergency-webhook">Custom Voice Call Webhook URL (Optional)</label>
+            <input type="text" id="input-emergency-webhook" class="form-control" placeholder="https://api.callmebot.com/... or Twilio / Zapier Webhook">
+            <span class="form-hint">Optional URL if you prefer a custom Twilio / Zapier / IFTTT phone call webhook.</span>
+          </div>
+        </div>
       </section>
 
       <!-- TAB 4: SCHEDULER & CAMPAIGNS -->

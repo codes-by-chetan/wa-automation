@@ -9,6 +9,7 @@ import pino from 'pino';
 import qrcode from 'qrcode';
 import qrcodeTerminal from 'qrcode-terminal';
 import fs from 'fs';
+import path from 'path';
 import { CONFIG } from '../config';
 import { db } from '../storage/db';
 import { messageHandler } from './messageHandler';
@@ -32,6 +33,26 @@ export class WhatsAppManager {
   private isInitializing = false;
 
   constructor() {
+    if (!fs.existsSync(CONFIG.AUTH_DIR)) {
+      fs.mkdirSync(CONFIG.AUTH_DIR, { recursive: true });
+    }
+  }
+
+  public clearAuth(): void {
+    if (fs.existsSync(CONFIG.AUTH_DIR)) {
+      try {
+        fs.rmSync(CONFIG.AUTH_DIR, { recursive: true, force: true });
+      } catch {
+        try {
+          const files = fs.readdirSync(CONFIG.AUTH_DIR);
+          for (const file of files) {
+            try {
+              fs.rmSync(path.join(CONFIG.AUTH_DIR, file), { recursive: true, force: true });
+            } catch {}
+          }
+        } catch {}
+      }
+    }
     if (!fs.existsSync(CONFIG.AUTH_DIR)) {
       fs.mkdirSync(CONFIG.AUTH_DIR, { recursive: true });
     }
@@ -66,6 +87,8 @@ export class WhatsAppManager {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
+          this.isInitializing = false;
+          this.status = 'connecting';
           try {
             this.currentQrDataUrl = await qrcode.toDataURL(qr);
             console.log('\n=========================================');
@@ -101,7 +124,8 @@ export class WhatsAppManager {
           this.isInitializing = false;
 
           const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
-          const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+          const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === DisconnectReason.badSession;
+          const shouldReconnect = !isLoggedOut;
 
           db.log('WARN', `WhatsApp disconnected: code ${statusCode}, reconnecting: ${shouldReconnect}`);
 
@@ -111,9 +135,25 @@ export class WhatsAppManager {
               this.start().catch((err) => console.error('Reconnect error:', err));
             }, 5000);
           } else {
-            console.log('Session logged out or expired. Please re-scan QR code to log in.');
+            console.log('\n[WhatsApp] Session logged out or expired. Clearing credentials to generate a new QR code...');
             this.user = null;
             this.currentQrDataUrl = null;
+            this.clearAuth();
+
+            if (this.sock) {
+              try {
+                this.sock.ev.removeAllListeners('connection.update');
+                this.sock.ev.removeAllListeners('creds.update');
+                this.sock.ev.removeAllListeners('messages.upsert');
+                this.sock.end(undefined);
+              } catch {}
+              this.sock = null;
+            }
+
+            // Immediately restart with blank auth so a fresh QR code is generated
+            setTimeout(() => {
+              this.start().catch((err) => console.error('Restart for QR code generation error:', err));
+            }, 1000);
           }
         }
       });
@@ -182,6 +222,20 @@ export class WhatsAppManager {
     };
   }
 
+  public getSocket(): WASocket | null {
+    return this.sock;
+  }
+
+  public getOwnerName(): string {
+    if (process.env.OWNER_NAME && process.env.OWNER_NAME.trim()) {
+      return process.env.OWNER_NAME.trim();
+    }
+    if (this.user?.name && this.user.name.trim()) {
+      return this.user.name.trim();
+    }
+    return 'Chetan';
+  }
+
   public async logout(): Promise<void> {
     try {
       if (this.sock) {
@@ -189,28 +243,49 @@ export class WhatsAppManager {
       }
     } catch {}
 
-    this.sock = null;
+    if (this.sock) {
+      try {
+        this.sock.ev.removeAllListeners('connection.update');
+        this.sock.ev.removeAllListeners('creds.update');
+        this.sock.ev.removeAllListeners('messages.upsert');
+        this.sock.end(undefined);
+      } catch {}
+      this.sock = null;
+    }
+
     this.status = 'disconnected';
     this.user = null;
     this.currentQrDataUrl = null;
+    this.isInitializing = false;
 
-    // Remove auth folder
-    if (fs.existsSync(CONFIG.AUTH_DIR)) {
-      fs.rmSync(CONFIG.AUTH_DIR, { recursive: true, force: true });
-    }
-
+    this.clearAuth();
     db.log('INFO', 'User logged out, session credentials cleared');
+
+    // Automatically prepare a fresh QR code for the dashboard
+    setTimeout(() => {
+      this.start().catch((err) => console.error('Post-logout restart error:', err));
+    }, 1000);
   }
 
-  public async restart(): Promise<void> {
+  public async restart(forceNewSession = false): Promise<void> {
     if (this.sock) {
       try {
+        this.sock.ev.removeAllListeners('connection.update');
+        this.sock.ev.removeAllListeners('creds.update');
+        this.sock.ev.removeAllListeners('messages.upsert');
         this.sock.end(undefined);
       } catch {}
       this.sock = null;
     }
     this.status = 'disconnected';
     this.isInitializing = false;
+    this.user = null;
+    this.currentQrDataUrl = null;
+
+    if (forceNewSession) {
+      this.clearAuth();
+    }
+
     await this.start();
   }
 }

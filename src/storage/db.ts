@@ -15,6 +15,9 @@ export interface AppSettings {
   typing_simulation: boolean;
   history_limit: number;
   scheduled_reply_mode: 'reply_with_context' | 'default';
+  emergency_number: string;
+  emergency_call_webhook: string;
+  callmebot_api_key: string;
 }
 
 export interface ChatMessage {
@@ -56,7 +59,7 @@ export interface CampaignContext {
 export interface SystemLog {
   id: number;
   timestamp: string;
-  level: 'INFO' | 'WARN' | 'ERROR' | 'REPLY';
+  level: 'INFO' | 'WARN' | 'ERROR' | 'REPLY' | 'ALERT';
   message: string;
   details?: string | null;
 }
@@ -158,16 +161,43 @@ class StorageDB {
       typing_simulation: true,
       history_limit: 10,
       scheduled_reply_mode: 'reply_with_context',
+      emergency_number: CONFIG.EMERGENCY_NUMBER,
+      emergency_call_webhook: CONFIG.EMERGENCY_CALL_WEBHOOK_URL,
+      callmebot_api_key: CONFIG.CALLMEBOT_API_KEY,
     };
 
     const selectStmt = this.db.prepare('SELECT value FROM settings WHERE key = ?');
     const insertStmt = this.db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)');
+    const updateStmt = this.db.prepare('UPDATE settings SET value = ? WHERE key = ?');
 
     for (const [key, val] of Object.entries(defaults)) {
       const existing = selectStmt.get(key);
       if (!existing) {
         insertStmt.run(key, typeof val === 'object' ? JSON.stringify(val) : String(val));
       }
+    }
+
+    // Automatically sync environment variables from .env if defined
+    if (process.env.LLM_BASE_URL) {
+      updateStmt.run(process.env.LLM_BASE_URL, 'llm_base_url');
+    }
+    if (process.env.LLM_API_KEY) {
+      updateStmt.run(process.env.LLM_API_KEY, 'llm_api_key');
+    }
+    if (process.env.LLM_MODEL) {
+      updateStmt.run(process.env.LLM_MODEL, 'llm_model');
+    }
+    if (process.env.SYSTEM_PROMPT) {
+      updateStmt.run(process.env.SYSTEM_PROMPT, 'system_prompt');
+    }
+    if (process.env.EMERGENCY_NUMBER) {
+      updateStmt.run(process.env.EMERGENCY_NUMBER, 'emergency_number');
+    }
+    if (process.env.EMERGENCY_CALL_WEBHOOK_URL) {
+      updateStmt.run(process.env.EMERGENCY_CALL_WEBHOOK_URL, 'emergency_call_webhook');
+    }
+    if (process.env.CALLMEBOT_API_KEY) {
+      updateStmt.run(process.env.CALLMEBOT_API_KEY, 'callmebot_api_key');
     }
   }
 

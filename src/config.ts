@@ -16,4 +16,7 @@ export const CONFIG = {
     'You are a smart, professional, and friendly WhatsApp AI assistant. ' +
     'Provide concise, natural, and helpful replies suitable for chat messaging. ' +
     'Keep your formatting clean and readable on mobile devices.',
+  EMERGENCY_NUMBER: process.env.EMERGENCY_NUMBER || '',
+  EMERGENCY_CALL_WEBHOOK_URL: process.env.EMERGENCY_CALL_WEBHOOK_URL || '',
+  CALLMEBOT_API_KEY: process.env.CALLMEBOT_API_KEY || '',
 };

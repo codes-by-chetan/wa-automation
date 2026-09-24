@@ -1,7 +1,10 @@
+import fs from 'fs';
+import path from 'path';
+import { CONFIG } from '../config';
 import { db } from '../storage/db';
 
 export interface MessageContext {
-  jid: string;           // Chat JID (e.g. 1234567890@s.whatsapp.net or 120363@g.us)
+  jid: string;           // Chat JID (e.g. 1234567890@s.whatsapp.net or 120363@g.us or 144804822409232@lid)
   sender: string;        // Participant JID in group, or same as jid in direct
   fromMe: boolean;       // Message sent by the bot's own WhatsApp account
   isGroup: boolean;      // True if group chat
@@ -16,37 +19,136 @@ export interface RuleEvaluationResult {
 
 export class RuleEngine {
   /**
+   * Helper to look up mapped phone number from an LID (or vice versa) in auth_baileys.
+   */
+  private getLidMapping(id: string): string | null {
+    const cleanDigits = id.replace(/\D/g, '');
+    if (!cleanDigits) return null;
+
+    try {
+      if (fs.existsSync(CONFIG.AUTH_DIR)) {
+        // 1. If cleanDigits is an LID, check if reverse mapping exists (gives phone number)
+        const reverseFile = path.join(CONFIG.AUTH_DIR, `lid-mapping-${cleanDigits}_reverse.json`);
+        if (fs.existsSync(reverseFile)) {
+          const content = JSON.parse(fs.readFileSync(reverseFile, 'utf8'));
+          if (typeof content === 'string') return content.replace(/\D/g, '');
+        }
+
+        // 2. If cleanDigits is a phone number, check if forward mapping exists (gives LID)
+        const forwardFile = path.join(CONFIG.AUTH_DIR, `lid-mapping-${cleanDigits}.json`);
+        if (fs.existsSync(forwardFile)) {
+          const content = JSON.parse(fs.readFileSync(forwardFile, 'utf8'));
+          if (typeof content === 'string') return content.replace(/\D/g, '');
+        }
+
+        // 3. Suffix search if cleanDigits is at least 7 digits (e.g. phone entered without country code)
+        if (cleanDigits.length >= 7) {
+          const files = fs.readdirSync(CONFIG.AUTH_DIR);
+          for (const file of files) {
+            if (file.startsWith('lid-mapping-') && file.endsWith('.json')) {
+              if (file.includes(cleanDigits)) {
+                const fullPath = path.join(CONFIG.AUTH_DIR, file);
+                const content = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+                if (typeof content === 'string') return content.replace(/\D/g, '');
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+
+    return null;
+  }
+
+  /**
+   * Collect all normalized forms/aliases of a WhatsApp JID / sender (phone numbers, LIDs, last 10 digits).
+   */
+  private getCandidateIdentifiers(jid: string, sender: string): Set<string> {
+    const candidates = new Set<string>();
+
+    const addJidForms = (raw: string) => {
+      if (!raw) return;
+      const lower = raw.trim().toLowerCase();
+      candidates.add(lower);
+
+      const digits = lower.replace(/\D/g, '');
+      if (digits) {
+        candidates.add(digits);
+        if (digits.length >= 10) {
+          candidates.add(digits.slice(-10));
+        }
+
+        // Check if there is an LID or reverse phone mapping
+        const mapped = this.getLidMapping(digits);
+        if (mapped) {
+          candidates.add(mapped);
+          candidates.add(`${mapped}@s.whatsapp.net`);
+          candidates.add(`${mapped}@lid`);
+          if (mapped.length >= 10) {
+            candidates.add(mapped.slice(-10));
+          }
+        }
+      }
+    };
+
+    addJidForms(jid);
+    addJidForms(sender);
+
+    return candidates;
+  }
+
+  /**
    * Normalize a phone number or JID for matching.
-   * Strips '+' and spaces, or converts phone to WhatsApp standard format.
    */
   public normalizeTarget(target: string): string {
     const trimmed = target.trim().toLowerCase();
     if (trimmed.includes('@')) {
       return trimmed;
     }
-    // Remove non-digit chars
     const digitsOnly = trimmed.replace(/\D/g, '');
     return `${digitsOnly}@s.whatsapp.net`;
   }
 
   /**
-   * Check if a JID matches an array of configured targets (phones or JIDs).
+   * Check if an incoming message matches an array of configured targets (phones, LIDs, or JIDs).
    */
   public matchesTargetList(jid: string, sender: string, list: string[]): boolean {
     if (!list || list.length === 0) return false;
 
-    const normalizedJid = this.normalizeTarget(jid);
-    const normalizedSender = this.normalizeTarget(sender);
+    const candidates = this.getCandidateIdentifiers(jid, sender);
 
     return list.some((item) => {
-      const normalizedItem = this.normalizeTarget(item);
-      return (
-        normalizedItem === normalizedJid ||
-        normalizedItem === normalizedSender ||
-        // Check if plain phone digits match
-        jid.startsWith(item.replace(/\D/g, '') + '@') ||
-        sender.startsWith(item.replace(/\D/g, '') + '@')
-      );
+      if (!item) return false;
+      const itemClean = item.trim().toLowerCase();
+      const itemDigits = item.replace(/\D/g, '');
+
+      // 1. Exact string match (e.g. 144804822409232@lid, 120363@g.us)
+      if (candidates.has(itemClean)) return true;
+
+      // 2. Full digit match (e.g. 919764560354)
+      if (itemDigits && candidates.has(itemDigits)) return true;
+
+      // 3. National 10-digit suffix match (e.g. entered without country code: 9764560354)
+      if (itemDigits && itemDigits.length >= 10 && candidates.has(itemDigits.slice(-10))) {
+        return true;
+      }
+
+      // 4. Check if item has a known LID mapping
+      if (itemDigits) {
+        const itemMapped = this.getLidMapping(itemDigits);
+        if (itemMapped) {
+          if (candidates.has(itemMapped)) return true;
+          if (candidates.has(`${itemMapped}@lid`)) return true;
+          if (candidates.has(`${itemMapped}@s.whatsapp.net`)) return true;
+        }
+      }
+
+      // 5. Standard JID match
+      if (itemDigits && (candidates.has(`${itemDigits}@s.whatsapp.net`) || candidates.has(`${itemDigits}@lid`))) {
+        return true;
+      }
+
+      return false;
     });
   }
 

@@ -6,6 +6,7 @@ import { db } from '../storage/db';
 import { waManager } from '../core/whatsapp';
 import { llmService } from '../services/llm';
 import { messageScheduler } from '../services/scheduler';
+import { triggerEmergencyAlert } from '../services/alert';
 
 export function createServer(): express.Express {
   const app = express();
@@ -23,9 +24,10 @@ export function createServer(): express.Express {
     res.json(waManager.getStatus());
   });
 
-  app.post('/api/reconnect', async (_req: Request, res: Response) => {
+  app.post('/api/reconnect', async (req: Request, res: Response) => {
     try {
-      await waManager.restart();
+      const forceNew = req.body?.forceNew === true || waManager.getStatus().status !== 'connected';
+      await waManager.restart(forceNew);
       res.json({ success: true, message: 'Reconnecting WhatsApp...' });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
@@ -54,6 +56,33 @@ export function createServer(): express.Express {
       res.json({ success: true, settings: updated });
     } catch (err: any) {
       res.status(400).json({ success: false, error: err.message });
+    }
+  });
+
+  // 2.1 Test Emergency Alert Endpoint
+  app.post('/api/test-emergency', async (req: Request, res: Response) => {
+    try {
+      const settings = db.getSettings();
+      const emergencyNumber = (req.body?.emergencyNumber || settings.emergency_number || '').trim();
+      const callmebotApiKey = (req.body?.callmebotApiKey || settings.callmebot_api_key || '').trim();
+      const ownerName = waManager.getOwnerName();
+
+      await triggerEmergencyAlert({
+        ownerName,
+        senderName: 'Test Alert (Dashboard)',
+        senderJid: 'dashboard-test@s.whatsapp.net',
+        incomingText: 'Wake up! This is a test emergency alert from the Web Dashboard.',
+        sock: waManager.getSocket(),
+        emergencyNumberOverride: emergencyNumber,
+        callmebotApiKeyOverride: callmebotApiKey,
+      });
+
+      res.json({
+        success: true,
+        message: 'Emergency ringtone played, call triggered & WhatsApp SOS sent',
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
     }
   });
 

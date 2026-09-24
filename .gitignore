@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build artifacts
+dist/
+
+# Environment variables & secrets
+.env
+.env.local
+.env.*.local
+
+# WhatsApp Session Auth & Database Storage
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# OS and IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

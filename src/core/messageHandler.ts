@@ -2,6 +2,8 @@ import { WAMessage, WASocket } from '@whiskeysockets/baileys';
 import { db } from '../storage/db';
 import { ruleEngine, MessageContext } from '../services/ruleEngine';
 import { llmService } from '../services/llm';
+import { playAlertSound, triggerEmergencyAlert } from '../services/alert';
+import { waManager } from './whatsapp';
 
 export class MessageHandler {
   /**
@@ -97,22 +99,52 @@ export class MessageHandler {
       const history = db.getRecentMessages(jid, settings.history_limit).filter((m) => m.id !== messageId);
 
       // Generate response using OpenAI-compatible LLM
-      const replyText = await llmService.generateReply({
+      const ownerName = waManager.getOwnerName();
+      const replyRaw = await llmService.generateReply({
         jid,
         senderName,
+        ownerName,
         isGroup,
         incomingText: content,
         history,
         campaignContext,
       });
 
-      if (!replyText || replyText.trim().length === 0) {
+      if (!replyRaw || replyRaw.trim().length === 0) {
         db.log('WARN', `LLM generated an empty response for ${jid}`);
         if (settings.typing_simulation) {
           await sock.sendPresenceUpdate('paused', jid);
         }
         return;
       }
+
+      // Check if notification or wake-up was requested by the user or triggered by LLM
+      const hasNotifyTag = replyRaw.includes('[NOTIFY_OWNER]');
+      const lowerIncoming = content.toLowerCase();
+      const directNotifyRequest = 
+        lowerIncoming.includes('wake') ||
+        lowerIncoming.includes('wake up') ||
+        lowerIncoming.includes('wake him') ||
+        lowerIncoming.includes('sleeping') ||
+        lowerIncoming.includes('notify') || 
+        lowerIncoming.includes('let him know') || 
+        lowerIncoming.includes('tell him') || 
+        lowerIncoming.includes('call him') || 
+        lowerIncoming.includes('urgent') ||
+        lowerIncoming.includes('emergency');
+
+      if (hasNotifyTag || directNotifyRequest) {
+        await triggerEmergencyAlert({
+          ownerName,
+          senderName: senderName || jid.split('@')[0],
+          senderJid: jid,
+          incomingText: content,
+          sock,
+        });
+      }
+
+      // Strip [NOTIFY_OWNER] tag before sending to WhatsApp
+      const replyText = replyRaw.replace(/\[NOTIFY_OWNER\]/gi, '').trim();
 
       // Send the reply message
       // For groups, quote the sender's message for clear conversational context

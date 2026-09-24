@@ -126,8 +126,12 @@ document.getElementById('btn-reconnect').addEventListener('click', async () => {
 });
 
 document.getElementById('btn-refresh-qr').addEventListener('click', async () => {
-  showToast('Refreshing QR code...', 'info');
-  await fetch('/api/reconnect', { method: 'POST' });
+  showToast('Generating fresh QR code...', 'info');
+  await fetch('/api/reconnect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ forceNew: true })
+  });
   fetchStatus();
 });
 
@@ -179,6 +183,13 @@ async function fetchSettings() {
     document.getElementById('input-cooldown').value = data.cooldown_seconds || 5;
     document.getElementById('toggle-typing').checked = data.typing_simulation !== false;
     document.getElementById('toggle-scheduled-context').checked = data.scheduled_reply_mode === 'reply_with_context';
+
+    const emergencyNumInput = document.getElementById('input-emergency-number');
+    if (emergencyNumInput) emergencyNumInput.value = data.emergency_number || '';
+    const emergencyKeyInput = document.getElementById('input-callmebot-key');
+    if (emergencyKeyInput) emergencyKeyInput.value = data.callmebot_api_key || '';
+    const emergencyWebhookInput = document.getElementById('input-emergency-webhook');
+    if (emergencyWebhookInput) emergencyWebhookInput.value = data.emergency_call_webhook || '';
   } catch (err) {
     console.error('Settings load error:', err);
   }
@@ -318,6 +329,10 @@ function initSettingsListeners() {
     const typing = document.getElementById('toggle-typing').checked;
     const scheduledContext = document.getElementById('toggle-scheduled-context').checked;
 
+    const emergencyNum = document.getElementById('input-emergency-number')?.value.trim() || '';
+    const emergencyKey = document.getElementById('input-callmebot-key')?.value.trim() || '';
+    const emergencyWebhook = document.getElementById('input-emergency-webhook')?.value.trim() || '';
+
     const payload = {
       target_mode: selectedMode,
       whitelist: state.whitelist,
@@ -325,6 +340,9 @@ function initSettingsListeners() {
       cooldown_seconds: cooldown,
       typing_simulation: typing,
       scheduled_reply_mode: scheduledContext ? 'reply_with_context' : 'default',
+      emergency_number: emergencyNum,
+      emergency_call_webhook: emergencyWebhook,
+      callmebot_api_key: emergencyKey,
     };
 
     const res = await fetch('/api/settings', {
@@ -334,12 +352,38 @@ function initSettingsListeners() {
     });
 
     if (res.ok) {
-      showToast('Targeting & Filter rules saved', 'success');
+      showToast('Targeting, filter rules & emergency settings saved', 'success');
       fetchSettings();
     } else {
       showToast('Failed to save rules', 'error');
     }
   });
+
+  // Test Emergency Alarm & SOS
+  const btnTestEmergency = document.getElementById('btn-test-emergency');
+  if (btnTestEmergency) {
+    btnTestEmergency.addEventListener('click', async () => {
+      const emergencyNumber = document.getElementById('input-emergency-number')?.value.trim() || '';
+      const emergencyKey = document.getElementById('input-callmebot-key')?.value.trim() || '';
+      showToast('Triggering emergency ringtone, call & SOS test...', 'warning');
+
+      try {
+        const res = await fetch('/api/test-emergency', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ emergencyNumber, callmebotApiKey: emergencyKey }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message || 'Emergency alarm played & WhatsApp alert triggered!', 'success');
+        } else {
+          showToast(`Emergency test error: ${data.error}`, 'error');
+        }
+      } catch (err) {
+        showToast(`Failed to trigger test: ${err.message}`, 'error');
+      }
+    });
+  }
 }
 
 function updateModeCardHighlight() {

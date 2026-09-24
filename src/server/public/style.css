@@ -1328,3 +1328,42 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* Activity Log Badges */
+.log-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 480px;
+  overflow-y: auto;
+  font-size: 0.8rem;
+}
+
+.log-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.log-time {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.log-badge {
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.log-badge.INFO { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+.log-badge.REPLY { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+.log-badge.WARN { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+.log-badge.ERROR { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+.log-badge.ALERT { background: rgba(236, 72, 153, 0.25); color: #f472b6; border: 1px solid #ec4899; }
+
